@@ -1,0 +1,14 @@
+name: hawkerpopulartimes
+title: hawkerpopulartimes
+username:
+account: rtyw
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 6209116
+bundleId: 5856656
+url: https://rtyw.shinyapps.io/hawkerpopulartimes/
+when: 1651399725.37594
+lastSyncTime: 1651399725.37594
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: Hawkers.rmd|hkr.qgz

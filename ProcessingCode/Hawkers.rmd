@@ -1,0 +1,330 @@
+---
+title: "Hawker, Voronois"
+output: html_document
+---
+
+Clear 
+```{r}
+rm(list = ls())
+```
+
+
+```{r setup, include=FALSE}
+library(devtools)
+#devtools::install_github("JosiahParry/populartimes")
+
+library(populartimes)
+library(tidyverse)
+
+#spatial
+library(rgdal)
+library(sp)
+library(spdplyr)
+library(raster)
+library(terra)
+library(sf)
+library(rgeos)
+```
+
+Read Hawker Names + Location and Store in DF
+```{r}
+#read network
+h = readOGR("Data/hawkers.mif", verbose = FALSE)
+h = h %>% filter(STATUS != "Under Construction")
+
+#filter and write back
+writeOGR(obj=h, dsn="Data/hawkers_existing.mif", layer="00", driver="MapInfo File")
+plot(h)
+
+#save a copy
+hh = h
+```
+
+Prepare New DF (only for popular times)
+```{r}
+h.df = data.frame(index = 1:nrow(hh),name = as.data.frame(hh)[,1] , lon = NA , lat = NA, popular_times = NA, time_spent = NA , current_popularity = NA, filled = NA )
+h.df
+```
+
+Scrape: Receive Popular Times
+```{r}
+for (i in 1:nrow(h.df)){
+#for (i in 1:1){
+  hawker_name = h.df$name[i]
+  #scrape data
+  a = poptimes_from_address(hawker_name, "Singapore")
+  
+  #check poptimes if correct
+  if (nrow(as.data.frame(a$popular_times)) != 0 ){ #a is correct
+    #assign value
+    h.df$popular_times[i] = a$popular_times
+    h.df$lon[i] = a$lon
+    h.df$lat[i] = a$lat
+    h.df$time_spent[i] = a$time_spent
+    h.df$current_popularity[i] = a$current_popularity
+    
+  } else {
+    
+    #check b (alternative query)
+    b = poptimes_from_address(paste0("Hawker Centre ",hawker_name), paste0("Singapore"))
+    if (nrow(as.data.frame(b$popular_times)) != 0 ){ #b is correct
+      h.df$popular_times[i] = b$popular_times
+      h.df$lon[i] = b$lon
+      h.df$lat[i] = b$lat
+      h.df$time_spent[i] = b$time_spent
+      h.df$current_popularity[i] = b$current_popularity 
+    }
+    
+    else {
+      
+      #check c (alternative query)
+      c = poptimes_from_address(paste0("Hawker Centre"), paste0("Singapore ",hh$ADDRESSPOSTALCODE[i]))
+      if (nrow(as.data.frame(c$popular_times)) != 0 ){ #c is correct
+        h.df$popular_times[i] = c$popular_times
+        h.df$lon[i] = c$lon
+        h.df$lat[i] = c$lat
+        h.df$time_spent[i] = c$time_spent
+        h.df$current_popularity[i] = c$current_popularity
+      
+    }
+     
+  }
+  
+  }
+  
+}
+missing = which(is.na(h.df$lat))
+length(missing)
+missing
+h.df
+
+as.data.frame(h.df)%>% filter(is.na(lon))
+```
+
+Manual Entry of Failed Queries
+```{r}
+h.df1 = h.df
+
+inp = function(h.df, i, query1, query2){
+  a = poptimes_from_address(query1, query2)
+  h.df$popular_times[i] = a$popular_times
+  h.df$lon[i] = a$lon
+  h.df$lat[i] = a$lat
+  h.df$time_spent[i] = a$time_spent
+  h.df$current_popularity[i] = a$current_popularity
+  return(h.df)
+}
+
+#if no point changing, just remove them completely,
+h.df1 = inp(h.df1, 5, "Shunfu Road Blk 320 (Shunfu Mart)", "Shunfu Mart")  
+h.df1 = inp(h.df1, 10, "Tanglin Halt Market", "48A Tanglin Halt Rd, Singapore 148813")  
+h.df1 = inp(h.df1, 12, "Teban Gardens Food Centre", "37A Teban Gardens Rd, Singapore 601037") 
+h.df1 = inp(h.df1, 15, "Blk 82 Telok Blangah Drive", "Blk 82 Telok Blangah Drive")  #X
+h.df1 = inp(h.df1, 17, "Hawker Centre", "30 Seng Poh Rd, #01-128/129, Singapore 168898")  #X
+h.df1 = inp(h.df1, 23, "Lorong 8 Toa Payoh Hawker Centre", "210 Lor 8 Toa Payoh, Singapore 310210") 
+h.df1 = inp(h.df1, 26, "Ayer Rajah Food Centre", "Blk 503, West Coast Drive. Ayer Rajah Food Centre, Singapore 120503") 
+h.df1 = inp(h.df1, 28, "Hawker Centre", "91 Whampoa Dr, Singapore 320091") 
+h.df1 = inp(h.df1, 33, "Bedok Reservoir Food Centre", "630 Bedok Reservoir Rd, Singapore 470630") 
+h.df1 = inp(h.df1, 44, "Hawker Centre", "5 Cross St, Singapore 048418") #X
+h.df1 = inp(h.df1, 47, "Maxwell Food Centre", "1 Kadayanallur St, Singapore 069184") 
+h.df1 = inp(h.df1, 51, "Hawker Centre", "Blk 58 New Upper Changi Rd, #01-07, Singapore 461058") 
+h.df1 = inp(h.df1, 58, "Albert Centre", "270 Queen St, Singapore 180270") 
+h.df1 = inp(h.df1, 69, "Ang Mo Kio Central Market & Food Centre", "724 Ang Mo Kio Ave 6, Singapore 560724") 
+h.df1 = inp(h.df1, 71, "Bedok Food Centre", "1 Bedok Rd, Singapore 469572") 
+h.df1 = inp(h.df1, 81, "Circuit Road Market Food Centre", "80 Circuit Rd, Singapore 370080") 
+h.df1 = inp(h.df1, 83, "MacPherson Market & Food Centre", "89 Circuit Rd, Singapore 370089") 
+h.df1 = inp(h.df1, 84, "353 Clementi Food Centre", "353 Clementi Food Centre")
+h.df1 = inp(h.df1, 85, "Clementi 448 Market & Food Centre", "448 Clementi Ave 3, Singapore 120448") 
+h.df1 = inp(h.df1, 86, "Hawker Centre West Coast Market Square", "Hawker Centre West Coast Market Square") 
+h.df1 = inp(h.df1, 91, "Market", "7 Empress Rd, Singapore 260007") 
+h.df1 = inp(h.df1, 95, "20 Ghim Moh Road Market & Food Centre", "20 Ghim Moh Rd, Singapore 270020") 
+h.df1 = inp(h.df1, 102, "Kovan 209 Market and Food Centre", "209 Hougang Street 21, Singapore 530209") 
+
+
+h.df1 = inp(h.df1, 5, "Shunfu Road Blk 320 (Shunfu Mart)", "Shunfu Mart")  
+h.df1 = inp(h.df1, 19, "Toa Payoh Lorong 4 Food Centre", "74 Lor 4 Toa Payoh, Block 74, Singapore 310074")  
+h.df1 = inp(h.df1, 29, "Hawker Centre", "Whampoa Makan Place") ##
+h.df1 = inp(h.df1, 34, "Hawker Centre", "Block 16 Bedok South Market & Food Centre")
+h.df1 = inp(h.df1, 39, "Tekka Market", "665 Buffalo Rd, Singapore 210665")  
+h.df1 = inp(h.df1, 50, "Lorong 8 Toa Payoh Hawker Centre", "210 Lor 8 Toa Payoh, Singapore 310210") ##
+h.df1 = inp(h.df1, 62, "Kebun Baru Market and Food Centre", "226H Ang Mo Kio Street 22, Singapore 568226") 
+h.df1 = inp(h.df1, 72, "Blk 216 Bedok Food Centre and Market", "216 Bedok North Street 1, Singapore 460216") 
+h.df1 = inp(h.df1, 76, "Bukit Timah Market & Food Centre", "51 Upper Bukit Timah Rd, Singapore 588215") 
+h.df1 = inp(h.df1, 92, "Eunos Crescent Market and Food Centre", "4A Eunos Cres, Singapore 402004") 
+h.df1 = inp(h.df1, 100, "Holland Village Market & Food Centre", "1 Lor Mambong, Singapore 277700") 
+h.df1 = inp(h.df1, 106, "Jalan Kukoh Food Centre", "1 Jln Kukoh, Singapore 161001") 
+h.df1 = inp(h.df1, 108, "Yuhua Village Market and Food Centre", "254 Jurong East St 24, Singapore 600254") 
+h.df1 = inp(h.df1, 109, "Jurong West 505 Market & Food Centre", "505 Jurong West Street 52, Singapore 640505") 
+
+
+
+
+h.df1[86,]$popular_times
+
+#test query
+as.data.frame(h.df1[86,]$popular_times)
+
+#check for empty entries
+as.data.frame(h.df1)%>% filter(is.na(popular_times))
+```
+
+Manual Entry of Failed Queries: Check if any hawker centre has no popular times (15,17,44,58,84)
+5x  17x  28x  29x  44x  51x  58x  86x  95x 102x 106x 108x
+```{r}
+a = c()
+for (i in 1:nrow(h.df1)){
+  #check if filled
+  if ( nrow(as.data.frame(h.df1$popular_times[i])) == 0 ){
+    a= c(a,i)
+  }
+}
+h.df1[c(a),]
+
+```
+
+Get the peak times (Mode)
+```{r}
+#formula for mode
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+h.df1$peak = NA
+
+for (i in 1:nrow(h.df1)){
+  #if have data
+  if ( nrow(as.data.frame(h.df1$popular_times[i])) > 1 ){
+    t = as.data.frame(h.df1[i,]$popular_times) %>% arrange(desc(popularity)) %>% .[1:10,] %>%.$hour 
+    h.df1$peak[i] = Mode(t)
+  }
+}
+h.df1 %>% arrange(peak)
+h.df1
+```
+
+Upload Peak Data on Voronoi Map
+```{r}
+v = readOGR("Data/hawkers_v_clean.mif", verbose = FALSE)
+
+ 
+v$peak <- h.df1$peak[match(v$Name, h.df1$name)]
+#filter and write back
+writeOGR(obj=v, dsn="Data/hawkers_v_peak.mif", layer="00", driver="MapInfo File")
+
+```
+
+
+#ALL DATES
+
+saving the dates mon-sun,0-23
+```{r}
+library(dplyr)
+
+alltime <- h.df1
+
+#create col for each time and date.
+x <- c()
+d <- c("sun","mon","tue","wed","thu","fri","sat")
+for (day in d){
+  for (i in 0:23){
+    x = c(x,paste0(day,i))
+  }
+}
+df <- data.frame(matrix(0, ncol = length(x)))
+colnames(df) <- x
+
+#add new columns
+at <- cbind(alltime, df)
+df
+h.df1[20,]$popular_times
+```
+
+```{r}
+xx <- data.frame()
+
+for (i in 1:nrow(at)){
+  pt <- at$popular_times[[i]]
+  if (is.na(pt) == FALSE && nrow(pt)>0){ #ensure there is values
+    
+    #opn popular times
+    zz = at$popular_times[[i]] %>% distinct(day_of_week,hour, .keep_all = TRUE) %>%  #remove dup
+      mutate(name = paste0(d[as.numeric(day_of_week)],hour)) %>% dplyr::select(name,popularity)  #convert day and hour to a standard naming
+    zz = data.frame(t(zz))
+    colnames(zz) <- zz[1,]
+    zz <- zz[2,]
+    zz[] <- lapply(zz, function(x) as.numeric(as.character(x)))
+    zz
+    
+    #combines
+    n <- bind_rows(at[i,10:177] %>% add_rownames(), 
+          zz %>% add_rownames()) %>% mutate(rowname=i) %>%
+    # evaluate following calls for each value in the rowname column
+    group_by(rowname) %>%  dplyr::select(where(is.numeric)) %>%
+    # add all non-grouping variables
+    summarise_all(sum) %>% dplyr::select(-rowname)
+    
+    #print(paste0(i," ",ncol(cbind(at[i,1:9],n) )))
+    xx <- rbind(xx, cbind(at[i,1:9],n)  )
+    #at[i,] <- cbind(at[i,1:9],n)
+  } else {
+    at[i,10:177] = -1
+    xx <- rbind(xx, at[i,])
+  }
+  
+}
+xxx <- xx%>%mutate(popular_times=NA)%>%mutate_all(~replace(., is.na(.), 0))
+xxx[xxx$sun0==-1,]$peak <- -1
+
+write.csv(xxx , "Data/alltimes.csv")
+
+
+```
+
+Upload All Times on Voronoi Map
+```{r}
+xxx = read.csv("Data/alltimes.csv")    #1 May 2022
+v = readOGR("Data/hawkers_v_clean.mif", verbose = FALSE)
+#v$peak = h.df1$peak
+
+xxx
+v
+
+#merge
+names(xxx)[names(xxx) == 'name'] <- 'Name'
+v = merge(v, xxx, by.Y = Name)
+#v %>%arrange(Name)
+#xxx%>%arrange(Name)
+
+
+write.csv(v, "data/v.csv")
+#filter and write back
+writeOGR(obj=v, dsn="Data/hawkers_v_times.mif", layer="00", driver="MapInfo File")
+```
+
+```
+
+```{r eval=FALSE, warning=FALSE, include=FALSE}
+i=59
+zz = at$popular_times[[i]] %>% mutate(name = paste0(d[as.numeric(day_of_week)],hour)) %>% dplyr::select(name,popularity)
+zz = data.frame(t(zz))
+colnames(zz) <- zz[1,]
+zz <- zz[2,]
+zz[] <- lapply(zz, function(x) as.numeric(as.character(x)))
+zz
+
+
+n <- bind_rows(at[i,10:176] %>% add_rownames(), 
+          zz %>% add_rownames()) %>% mutate(rowname=i) %>%
+    # evaluate following calls for each value in the rowname column
+    group_by(rowname) %>%  dplyr::select(where(is.numeric)) %>%
+    # add all non-grouping variables
+    summarise_all(sum) %>% dplyr::select(-rowname)
+nn <- cbind(at[i,1:9],n)
+nn
+duplicated(at$popular_times[[89]])
+at
+at$popular_times[[59]]#%>% distinct(day_of_week,hour, .keep_all = TRUE)
+```
+
+
